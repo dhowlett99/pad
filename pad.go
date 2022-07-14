@@ -2,6 +2,8 @@
 package pad
 
 import (
+	"fmt"
+	"log"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -13,9 +15,8 @@ type Pad struct {
 	hits chan Hit
 }
 type Hit struct {
-	X   uint8
-	Y   uint8
-	Err error
+	X int
+	Y int
 }
 
 func Open() (*Pad, error) {
@@ -25,7 +26,7 @@ func Open() (*Pad, error) {
 	}
 	var device *midi.Device
 	for _, d := range devices {
-		if strings.Contains(strings.ToLower(d.Name), "Pad") {
+		if strings.Contains(d.Name, "MIDI") {
 			device = d
 			break
 		}
@@ -48,49 +49,49 @@ func (pad *Pad) Close() error {
 	return errors.Wrap(pad.Device.Close(), "closing midi device")
 }
 
-// Hits returns a channel that emits when the Pad buttons are hit.
-func (pad *Pad) Hits() (<-chan Hit, error) {
-	if pad.hits != nil {
-		return pad.hits, nil
-	}
-	packets, err := pad.Packets()
-	if err != nil {
-		return nil, errors.Wrap(err, "getting packets channel")
-	}
-	hits := make(chan Hit)
-
-	packet := <-packets
-
-	go convert(packet, hits)
-	pad.hits = hits
-	return hits, nil
-}
-
 func (pad *Pad) Reset() error {
 	_, err := pad.Write([]byte{0xb0, 0, 0})
 	return err
 }
 
-func convert(packets []midi.Packet, hits chan<- Hit) {
-	for _, packet := range packets {
-		if packet.Err != nil {
-			hits <- Hit{Err: packet.Err}
-			continue
-		}
-		if packet.Data[2] == 0 {
-			continue
-		}
-		var x, y uint8
+func (pad *Pad) Program() error {
+	_, err := pad.Write([]byte{0xf0, 0x00, 0x20})
+	if err != nil {
+		return err
+	}
+	_, err = pad.Write([]byte{0x29, 0x02, 0x0d})
+	if err != nil {
+		return err
+	}
+	_, err = pad.Write([]byte{0x0e, 0x01, 0xf7})
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
-		if packet.Data[0] == 176 {
-			x = packet.Data[1] - 104
-			y = 8
-		} else if packet.Data[0] == 144 {
-			x = packet.Data[1] % 16
-			y = (packet.Data[1] - x) / 16
-		} else {
-			continue
+func (pad *Pad) Listen(buttonchannel chan Hit) error {
+	eventChannel, err := pad.Packets()
+	if err != nil {
+		log.Fatal("error can't open button channel")
+		return err
+	}
+
+	for {
+
+		events := <-eventChannel
+
+		for _, packet := range events {
+			if packet.Err != nil {
+				fmt.Printf("packet error")
+				continue
+			}
+			var x, y int
+			if packet.Data[2] > 0 {
+				x = int(packet.Data[1])%10 - 1
+				y = 8 - (int(packet.Data[1])-x)/10
+				buttonchannel <- Hit{X: x, Y: y}
+			}
 		}
-		hits <- Hit{X: x, Y: y}
 	}
 }
