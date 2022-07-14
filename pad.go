@@ -50,7 +50,18 @@ func (pad *Pad) Close() error {
 }
 
 func (pad *Pad) Reset() error {
-	_, err := pad.Write([]byte{0xb0, 0, 0})
+	_, err := pad.Write([]byte{0xf0, 0x00, 0x20})
+	if err != nil {
+		return err
+	}
+	_, err = pad.Write([]byte{0x29, 0x02, 0x18})
+	if err != nil {
+		return err
+	}
+	_, err = pad.Write([]byte{0x0e, 0x00, 0xf7})
+	if err != nil {
+		return err
+	}
 	return err
 }
 
@@ -94,4 +105,35 @@ func (pad *Pad) Listen(buttonchannel chan Hit) error {
 			}
 		}
 	}
+}
+
+// Light lights the button at x,y with the given red, green, and blue values.
+func (pad *Pad) Light(x, y, red int, green int, blue int) error {
+	led := int64((8-y)*10 + x + 1)
+
+	_, err := pad.Write([]byte{0xF0, 0x00, 0x20})
+	if err != nil {
+		return err
+	}
+
+	_, err = pad.Write([]byte{0x29, 0x02, 0x0D})
+	if err != nil {
+		return err
+	}
+
+	_, err = pad.Write([]byte{0x03, 0x03, byte(led)})
+	if err != nil {
+		return err
+	}
+
+	_, err = pad.Write([]byte{byte(red), byte(green), byte(blue)})
+	if err != nil {
+		return err
+	}
+
+	_, err = pad.Write([]byte{0xF7})
+	if err != nil {
+		return err
+	}
+	return nil
 }
